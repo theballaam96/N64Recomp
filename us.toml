@@ -1,0 +1,21 @@
+# Config file for DK64 NTSC-U Recompilation
+
+[input]
+entrypoint = 0x80000400
+# Paths are relative to the location of this config file
+elf_path = "dk.us.rev1.elf"
+output_func_path = "RecompiledFuncs"
+relocatable_sections_path = "overlays.us.rev1.txt
+manual_funcs = []
+
+[patches]
+stubs = [
+
+]
+ignored = [
+
+]
+
+# Hooks
+
+# Single-instruction Patches
