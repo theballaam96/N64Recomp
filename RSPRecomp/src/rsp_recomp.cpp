@@ -5,10 +5,12 @@
 #include <unordered_set>
 #include <unordered_map>
 #include <cassert>
+#include <iostream>
 #include <filesystem>
 #include "rabbitizer.hpp"
 #include "fmt/format.h"
 #include "fmt/ostream.h"
+#include <toml++/toml.hpp>
 
 using InstrId = rabbitizer::InstrId::UniqueId;
 using Cop0Reg = rabbitizer::Registers::Rsp::Cop0;
@@ -307,7 +309,7 @@ bool process_instruction(size_t instr_index, const std::vector<rabbitizer::Instr
                     operand_string += fmt::format("{}, ", vs);
                     break;
                 case RspOperand::De:
-                    operand_string += fmt::format("{}, ", instr.GetRsp_de());
+                    operand_string += fmt::format("{}, ", instr.GetRsp_de() & 7);
                     break;
                 case RspOperand::Rt:
                     operand_string += fmt::format("{}{}, ", ctx_gpr_prefix(rt), rt);
@@ -459,10 +461,12 @@ bool process_instruction(size_t instr_index, const std::vector<rabbitizer::Instr
             break;
         case InstrId::rsp_jr:
             print_line("jump_target = {}{}", ctx_gpr_prefix(rs), rs);
+            print_line("debug_file = __FILE__; debug_line = __LINE__");
             print_unconditional_branch("goto do_indirect_jump");
             break;
         case InstrId::rsp_jalr:
             print_line("jump_target = {}{}; {}{} = 0x{:8X}", ctx_gpr_prefix(rs), rs, ctx_gpr_prefix(rd), rd, instr_vram + 2 * instr_size);
+            print_line("debug_file = __FILE__; debug_line = __LINE__");
             print_unconditional_branch("goto do_indirect_jump");
             break;
         case InstrId::rsp_bne:
@@ -528,58 +532,15 @@ void write_indirect_jumps(std::ofstream& output_file, const BranchTargets& branc
     }
     fmt::print(output_file,
         "    }}\n"
-        "    printf(\"Unhandled jump target 0x%04X in microcode {}\\n\", jump_target);\n"
+        "    printf(\"Unhandled jump target 0x%04X in microcode {}, coming from [%s:%d]\\n\", jump_target, debug_file, debug_line);\n"
+        "    printf(\"Register dump: r0  = %08X r1  = %08X r2  = %08X r3  = %08X r4  = %08X r5  = %08X r6  = %08X r7  = %08X\\n\"\n"
+        "           \"               r8  = %08X r9  = %08X r10 = %08X r11 = %08X r12 = %08X r13 = %08X r14 = %08X r15 = %08X\\n\"\n"
+        "           \"               r16 = %08X r17 = %08X r18 = %08X r19 = %08X r20 = %08X r21 = %08X r22 = %08X r23 = %08X\\n\"\n"
+        "           \"               r24 = %08X r25 = %08X r26 = %08X r27 = %08X r28 = %08X r29 = %08X r30 = %08X r31 = %08X\\n\",\n"
+        "           0, r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12, r13, r14, r15, r16,\n"
+        "           r17, r18, r19, r20, r21, r22, r23, r24, r25, r26, r27, r29, r30, r31);\n"
         "    return RspExitReason::UnhandledJumpTarget;\n", output_function_name);
 }
-
-// TODO de-hardcode these
-// OoT njpgdspMain
-//constexpr size_t rsp_text_offset = 0xB8BAD0;
-//constexpr size_t rsp_text_size = 0xAF0;
-//constexpr size_t rsp_text_address = 0x04001080;
-//std::string rom_file_path = "../test/oot_mq_debug.z64";
-//std::string output_file_path = "../test/rsp/njpgdspMain.cpp";
-//std::string output_function_name = "njpgdspMain";
-//const std::vector<uint32_t> extra_indirect_branch_targets{};
-//const std::unordered_set<uint32_t> unsupported_instructions{};
-
-// OoT aspMain
-//constexpr size_t rsp_text_offset = 0xB89260;
-//constexpr size_t rsp_text_size = 0xFB0;
-//constexpr size_t rsp_text_address = 0x04001000;
-//std::string rom_file_path = "../test/oot_mq_debug.z64";
-//std::string output_file_path = "../test/rsp/aspMain.cpp";
-//std::string output_function_name = "aspMain";
-//const std::vector<uint32_t> extra_indirect_branch_targets{ 0x1F68, 0x1230, 0x114C, 0x1F18, 0x1E2C, 0x14F4, 0x1E9C, 0x1CB0, 0x117C, 0x17CC, 0x11E8, 0x1AA4, 0x1B34, 0x1190, 0x1C5C, 0x1220, 0x1784, 0x1830, 0x1A20, 0x1884, 0x1A84, 0x1A94, 0x1A48, 0x1BA0 };
-//const std::unordered_set<uint32_t> unsupported_instructions{};
-
-// MM's njpgdspMain is identical to OoT's
-
-//// MM aspMain
-//constexpr size_t rsp_text_offset = 0xC40FF0;
-//constexpr size_t rsp_text_size = 0x1000;
-//constexpr size_t rsp_text_address = 0x04001000;
-//std::string rom_file_path = "../../MMRecomp/mm.us.rev1.z64"; // uncompressed rom!
-//std::string output_file_path = "../../MMRecomp/rsp/aspMain.cpp";
-//std::string output_function_name = "aspMain";
-//const std::vector<uint32_t> extra_indirect_branch_targets{ 0x1F80, 0x1250, 0x1154, 0x1094, 0x1E0C, 0x1514, 0x1E7C, 0x1C90, 0x1180, 0x1808, 0x11E8, 0x1ADC, 0x1B6C, 0x1194, 0x1EF8, 0x1240, 0x17C0, 0x186C, 0x1A58, 0x18BC, 0x1ABC, 0x1ACC, 0x1A80, 0x1BD4 };
-//const std::unordered_set<uint32_t> unsupported_instructions{};
-
-// BT n_aspMain
-constexpr size_t rsp_text_offset = 0x1E4F3B0;
-constexpr size_t rsp_text_size = 0xF80;
-constexpr size_t rsp_text_address = 0x04001080;
-std::string rom_file_path = "../../BTRecomp/banjotooie.decompressed.us.z64"; // uncompressed rom!
-std::string output_file_path = "../../BTRecomp/rsp/n_aspMain.cpp";
-std::string output_function_name = "n_aspMain";
-const std::vector<uint32_t> extra_indirect_branch_targets{
-    // dispatch table
-    0x1AE8, 0x143C, 0x1240, 0x1D84, 0x126C, 0x1B20, 0x12A8, 0x1214, 0x141C, 0x1310, 0x13CC, 0x12E4, 0x1FB0, 0x1358, 0x16EC, 0x1408
-};
-const std::unordered_set<uint32_t> unsupported_instructions{
-    // cmd_MP3
-    0x00001214
-};
 
 #ifdef _MSC_VER
 inline uint32_t byteswap(uint32_t val) {
@@ -591,20 +552,154 @@ constexpr uint32_t byteswap(uint32_t val) {
 }
 #endif
 
-static_assert((rsp_text_size / instr_size) * instr_size == rsp_text_size, "RSP microcode must be a multiple of the instruction size");
+struct RSPRecompilerConfig {
+    size_t text_offset;
+    size_t text_size;
+    size_t text_address;
+    std::filesystem::path rom_file_path;
+    std::filesystem::path output_file_path;
+    std::string output_function_name;
+    std::vector<uint32_t> extra_indirect_branch_targets;
+    std::unordered_set<uint32_t> unsupported_instructions;
+};
 
-int main() {
-    std::array<uint32_t, rsp_text_size / sizeof(uint32_t)> instr_words{};
+std::filesystem::path concat_if_not_empty(const std::filesystem::path& parent, const std::filesystem::path& child) {
+    if (!child.empty()) {
+        return parent / child;
+    }
+    return child;
+}
+
+template <typename T>
+std::vector<T> toml_to_vec(const toml::array* array) {
+    std::vector<T> ret;
+
+    // Reserve room for all the funcs in the map.
+    ret.reserve(array->size());
+    array->for_each([&ret](auto&& el) {
+        if constexpr (toml::is_integer<decltype(el)>) {
+            ret.push_back(*el);
+        }
+    });
+
+    return ret;
+}
+
+template <typename T>
+std::unordered_set<T> toml_to_set(const toml::array* array) {
+    std::unordered_set<T> ret;
+
+    array->for_each([&ret](auto&& el) {
+        if constexpr (toml::is_integer<decltype(el)>) {
+            ret.insert(*el);
+        }
+    });
+
+    return ret;
+}
+
+bool read_config(const std::filesystem::path& config_path, RSPRecompilerConfig& out) {
+    RSPRecompilerConfig ret{};
+
+    try {
+        const toml::table config_data = toml::parse_file(config_path.u8string());
+        std::filesystem::path basedir = std::filesystem::path{ config_path }.parent_path();
+
+        std::optional<uint32_t> text_offset = config_data["text_offset"].value<uint32_t>();
+        if (text_offset.has_value()) {
+            ret.text_offset = text_offset.value();
+        }
+        else {
+            throw toml::parse_error("Missing text_offset in config file", config_data.source());
+        }
+
+        std::optional<uint32_t> text_size = config_data["text_size"].value<uint32_t>();
+        if (text_size.has_value()) {
+            ret.text_size = text_size.value();
+        }
+        else {
+            throw toml::parse_error("Missing text_size in config file", config_data.source());
+        }
+
+        std::optional<uint32_t> text_address = config_data["text_address"].value<uint32_t>();
+        if (text_address.has_value()) {
+            ret.text_address = text_address.value();
+        }
+        else {
+            throw toml::parse_error("Missing text_address in config file", config_data.source());
+        }
+
+        std::optional<std::string> rom_file_path = config_data["rom_file_path"].value<std::string>();
+        if (rom_file_path.has_value()) {
+            ret.rom_file_path = concat_if_not_empty(basedir, rom_file_path.value());
+        }
+        else {
+            throw toml::parse_error("Missing rom_file_path in config file", config_data.source());
+        }
+
+        std::optional<std::string> output_file_path = config_data["output_file_path"].value<std::string>();
+        if (output_file_path.has_value()) {
+            ret.output_file_path = concat_if_not_empty(basedir, output_file_path.value());
+        }
+        else {
+            throw toml::parse_error("Missing output_file_path in config file", config_data.source());
+        }
+
+        std::optional<std::string> output_function_name = config_data["output_function_name"].value<std::string>();
+        if (output_function_name.has_value()) {
+            ret.output_function_name = output_function_name.value();
+        }
+        else {
+            throw toml::parse_error("Missing output_function_name in config file", config_data.source());
+        }
+
+        // Extra indirect branch targets (optional)
+        const toml::node_view branch_targets_data = config_data["extra_indirect_branch_targets"];
+        if (branch_targets_data.is_array()) {
+            const toml::array* branch_targets_array = branch_targets_data.as_array();
+            ret.extra_indirect_branch_targets = toml_to_vec<uint32_t>(branch_targets_array);
+        }
+
+        // Unsupported_instructions (optional)
+        const toml::node_view unsupported_instructions_data = config_data["unsupported_instructions"];
+        if (unsupported_instructions_data.is_array()) {
+            const toml::array* unsupported_instructions_array = unsupported_instructions_data.as_array();
+            ret.unsupported_instructions = toml_to_set<uint32_t>(unsupported_instructions_array);
+        }
+    }
+    catch (const toml::parse_error& err) {
+        std::cerr << "Syntax error parsing toml: " << *err.source().path << " (" << err.source().begin <<  "):\n" << err.description() << std::endl;
+        return false;
+    }
+
+    out = ret;
+    return true;
+}
+
+int main(int argc, const char** argv) {
+    if (argc != 2) {
+        fmt::print("Usage: {} [config file]\n", argv[0]);
+        std::exit(EXIT_SUCCESS);
+    }
+
+    RSPRecompilerConfig config;
+    if (!read_config(std::filesystem::path{argv[1]}, config)) {
+        fmt::print("Failed to parse config file {}\n", argv[0]);
+        std::exit(EXIT_FAILURE);
+    }
+
+    std::vector<uint32_t> instr_words{};
+    instr_words.resize(config.text_size / sizeof(uint32_t));
     {
-        std::ifstream rom_file{ rom_file_path, std::ios_base::binary };
+        std::ifstream rom_file{ config.rom_file_path, std::ios_base::binary };
 
         if (!rom_file.good()) {
             fmt::print(stderr, "Failed to open rom file\n");
             return EXIT_FAILURE;
         }
 
-        rom_file.seekg(rsp_text_offset);
-        rom_file.read(reinterpret_cast<char*>(instr_words.data()), rsp_text_size);
+        rom_file.seekg(config.text_offset);
+        rom_file.read(reinterpret_cast<char*>(instr_words.data()), config.text_size);
     }
 
     // Disable appropriate pseudo instructions
@@ -616,7 +711,7 @@ int main() {
     // Decode the instruction words into instructions
     std::vector<rabbitizer::InstructionRsp> instrs{};
     instrs.reserve(instr_words.size());
-    uint32_t vram = rsp_text_address & rsp_mem_mask;
+    uint32_t vram = config.text_address & rsp_mem_mask;
     for (uint32_t instr_word : instr_words) {
         const rabbitizer::InstructionRsp& instr = instrs.emplace_back(byteswap(instr_word), vram);
         vram += instr_size;
@@ -626,34 +721,35 @@ int main() {
     BranchTargets branch_targets = get_branch_targets(instrs);
 
     // Add any additional indirect branch targets that may not be found directly in the code (e.g. from a jump table)
-    for (uint32_t target : extra_indirect_branch_targets) {
+    for (uint32_t target : config.extra_indirect_branch_targets) {
         branch_targets.indirect_targets.insert(target);
     }
 
     // Open output file and write beginning
-    std::filesystem::create_directories(std::filesystem::path{ output_file_path }.parent_path());
-    std::ofstream output_file(output_file_path);
+    std::filesystem::create_directories(std::filesystem::path{ config.output_file_path }.parent_path());
+    std::ofstream output_file(config.output_file_path);
     fmt::print(output_file,
-        "#include \"rsp.h\"\n"
-        "#include \"rsp_vu_impl.h\"\n"
+        "#include \"librecomp/rsp.hpp\"\n"
+        "#include \"librecomp/rsp_vu_impl.hpp\"\n"
         "RspExitReason {}(uint8_t* rdram) {{\n"
         "    uint32_t           r1 = 0,  r2 = 0,  r3 = 0,  r4 = 0,  r5 = 0,  r6 = 0,  r7 = 0;\n"
         "    uint32_t  r8 = 0,  r9 = 0, r10 = 0, r11 = 0, r12 = 0, r13 = 0, r14 = 0, r15 = 0;\n"
         "    uint32_t r16 = 0, r17 = 0, r18 = 0, r19 = 0, r20 = 0, r21 = 0, r22 = 0, r23 = 0;\n"
         "    uint32_t r24 = 0, r25 = 0, r26 = 0, r27 = 0, r28 = 0, r29 = 0, r30 = 0, r31 = 0;\n"
         "    uint32_t dma_dmem_address = 0, dma_dram_address = 0, jump_target = 0;\n"
+        "    const char * debug_file = NULL; int debug_line = 0;\n"
         "    RSP rsp{{}};\n"
-        "    r1 = 0xFC0;\n", output_function_name);
+        "    r1 = 0xFC0;\n", config.output_function_name);
     // Write each instruction
     for (size_t instr_index = 0; instr_index < instrs.size(); instr_index++) {
-        process_instruction(instr_index, instrs, output_file, branch_targets, unsupported_instructions, false, false);
+        process_instruction(instr_index, instrs, output_file, branch_targets, config.unsupported_instructions, false, false);
     }
 
     // Terminate instruction code with a return to indicate that the microcode has run past its end
     fmt::print(output_file, "    return RspExitReason::ImemOverrun;\n");
 
     // Write the section containing the indirect jump table
-    write_indirect_jumps(output_file, branch_targets, output_function_name);
+    write_indirect_jumps(output_file, branch_targets, config.output_function_name);
 
     // End the file
     fmt::print(output_file, "}}\n");
